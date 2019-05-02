@@ -55,6 +55,27 @@ get_guardian <- function(keywords,
                          verbose = verbose)
     out <- lapply(response, parse_to_df)
     out <- do.call(rbind, out)
+    
+    out$body <- vapply(out$body, parse_html, character(1))
+    
+    out$webPublicationDate <- as.POSIXct(
+      gsub("T|Z", "", out$webPublicationDate),
+      format = "%Y-%m-%d %H:%M:%S",
+      tz = "BST"
+    )
+    
+    out$newspaperEditionDate <- as.POSIXct(
+      gsub("T|Z", "", out$newspaperEditionDate),
+      format = "%Y-%m-%d %H:%M:%S",
+      tz = "BST"
+    )
+    
+    out$firstPublicationDate <- as.POSIXct(
+      gsub("T|Z", "", out$firstPublicationDate),
+      format = "%Y-%m-%d %H:%M:%S",
+      tz = "BST"
+    )
+    
     return(out)
 }
 
@@ -178,8 +199,6 @@ parse_to_df <- function(res) {
   })
   
   out <- do.call(rbind, out)
-  
-  out$body <- parse_html(out$body)
   
   return(out)
 }
