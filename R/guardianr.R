@@ -1,201 +1,161 @@
-### Guardian API Wrapper v.09
-### by M.T. Bastos & C. Puschmann
-### contributions by Mark Johnman
-# 
-# # install these packages first if needed
-# library(RCurl)
-# library(RJSONIO)
-
-# query Guardian API
-get_json <- function(keywords, section, format, from.date, to.date, api.key)
-{
-# pagination
-page.size <- 100
-this.page <- 1
-pages <- 1
-
-if(as.Date(as.character(to.date))-as.Date(as.character(from.date))>31) {
-    warning("The requested period is too long. Make weekly or monthly requests to avoid API interruptions")
+#' Search Guardian API for news articles that match the criteria
+#'
+#' @description The function get_guardian takes four variables (keyword(s),
+#'   starting date, end date, and API-key) and returns a data frame with a
+#'   column for every variable returned by the API columns, with the last column
+#'   including the full text of the article.
+#'
+#'   Search criteria accepts single or multiple keywords. It also accepts
+#'   Boolean queries with AND/OR/NOT between words to refine searches. For exact
+#'   phrasesand matches, please encapsulate the keywords in double quotes or %22
+#'   (e.g "%22Death+of+Margaret+Thatcher%22").
+#'
+#'   From version 0.5 onwards, the function get_guardian returns the full text
+#'   of articles and requires a Guardian API-key. Guardian API-key can be
+#'   obtained by registering at <http://open-platform.theguardian.com/access/>.
+#'
+#' @param keywords Keyword to search Guardian API. Example: "Thatcher". For
+#'   multiple keywordsuse "Margaret+Hilda+Thatcher".
+#' @param section Specifies news sections to narrow the query or NULL to search
+#'   everywhere.
+#' @param format either "json" or "xml".
+#' @param from,to Start and end date of search (both are included in the
+#'   search).
+#' @param api_key A Guardian API-key is necessary to retrieve the full text of
+#'   news articles. A Guardian API-key can be obtained by registering at
+#'   <http://open-platform.theguardian.com/access/>
+#' @param verbose Should progress and other messages be displayed (logical).
+#'
+#' @return data.frame with all variables delivered by the API
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' results <- get_guardian(
+#'     keywords = "Theresa May AND (Brexit OR EU)",
+#'     from = "2019-01-16",
+#'     to = "2019-01-30",
+#'     api_key = "212d23d3-c7b2-4273-8f1b-289a0803ca4b"
+#' )
+#' }
+get_guardian <- function(keywords,
+                         section = NULL,
+                         format = "json",
+                         from,
+                         to,
+                         api_key,
+                         verbose = TRUE) {
+    keywords <- gsub("\\s+", "+", keywords)
+    keywords <- gsub('"', "%22", keywords, fixed = TRUE)
+    guardian.api.responses <- get_json(keywords, section, format, from, to, api_key, verbose)
+    guardian.api.df <- parse_json_to_df(guardian.api.responses)
+    return(guardian.api.df)
 }
 
-# prepare list for storing api responses
-api.responses <- NULL
 
-# call guardian API
-while (this.page <= pages) {
-    if(is.null(section)) {
-        request <- paste("http://content.guardianapis.com/search?q=", keywords, "&from-date=", from.date, "&to-date=", to.date, 
-                         "&format=", format, "&show-fields=all&page=", this.page, "&page-size=", page.size, "&api-key=", api.key, sep="")
+#' @noRd
+#' @importFrom utils download.file
+#' @importFrom RCurl getURL
+#' @importFrom rjson fromJSON
+get_json <- function(keywords,
+                     section = NULL,
+                     format = "json",
+                     from,
+                     to,
+                     api_key,
+                     verbose) {
+  # pagination
+  page.size <- 100
+  this.page <- 1
+  pages <- 1
+
+  if (as.Date(as.character(to)) - as.Date(as.character(from)) > 31) {
+    warning("Periods longer than 30 days might lead to API interruptions.")
+  }
+
+  # prepare list for storing api responses
+  api.responses <- NULL
+
+  # call guardian API
+  while (this.page <= pages) {
+    if (is.null(section)) {
+      request <- paste("http://content.guardianapis.com/search?q=", keywords, "&from-date=", from, "&to-date=", to,
+        "&format=", format, "&show-fields=all&page=", this.page, "&page-size=", page.size, "&api-key=", api_key,
+        sep = ""
+      )
     } else {
-        request <- paste("http://content.guardianapis.com/search?q=", keywords, "&section=", section, "&from-date=", from.date, "&to-date=", to.date, 
-                         "&format=", format, "&show-fields=all&page=", this.page, 
-                     "&page-size=", page.size, "&api-key=", api.key, sep="") }
+      request <- paste("http://content.guardianapis.com/search?q=", keywords, "&section=", section, "&from-date=", from, "&to-date=", to,
+        "&format=", format, "&show-fields=all&page=", this.page,
+        "&page-size=", page.size, "&api-key=", api_key,
+        sep = ""
+      )
+    }
     # query api
-    if(.Platform$OS.type == "windows") { if(!file.exists("cacert.perm")) download.file(url="https://curl.haxx.se/ca/cacert.pem", destfile="cacert.perm") }
-    if(.Platform$OS.type == "windows") { json <- getURL(request, cainfo = "cacert.perm", timeout = 240, ssl.verifypeer = FALSE) }
-    else { json <- getURL(request, timeout = 240) }
-    json <- fromJSON(json, simplify=FALSE)
+    if (.Platform$OS.type == "windows") {
+      if (!file.exists("cacert.perm")) download.file(url = "https://curl.haxx.se/ca/cacert.pem", destfile = "cacert.perm")
+    }
+    if (.Platform$OS.type == "windows") {
+      json <- getURL(request, cainfo = "cacert.perm", timeout = 240, ssl.verifypeer = FALSE, .encoding = 'UTF-8')
+    } else {
+      json <- getURL(request, timeout = 240, .encoding = 'UTF-8')
+    }
+    #json <- fromJSON(json, simplify = FALSE, encoding = "UTF-8")
+    json <- rjson::fromJSON(json, simplify = FALSE)
+
     this.api.response <- json$response
     stopifnot(!is.null(this.api.response))
-    #if(this.page==1) { pages.total <<- this.api.response$pages }
-    if(this.api.response$total==0){
-        print(paste("No matches were found in the Guardian database for keyword '", keywords, "'", sep=""))
+    # if(this.page==1) { pages.total <<- this.api.response$pages }
+    if (this.api.response$total == 0) {
+        if (verbose) {
+            message("No matches were found in the Guardian database for keyword '", keywords, "'")
+        }
         this.page <- this.page + 1
     } else {
-        stopifnot(!is.null(this.api.response))
-        pages <- this.api.response$pages
-        if (pages >= 1)
-        {
-            print(paste("Fetched page #", this.page, " of ", pages, sep=""))
-            api.responses <- c(api.responses, this.api.response)
-        }
-        else
-        {
-            print("Fetched page #1 of 1.")
+      stopifnot(!is.null(this.api.response))
+      pages <- this.api.response$pages
+      if (pages >= 1) {
+        if (verbose) {
+            message("Fetched page #", this.page, " of ", pages)
         }
         api.responses <- c(api.responses, this.api.response)
-        this.page <- this.page + 1
+      } else {
+          if (verbose) {
+              print("Fetched page #1 of 1.")
+          }
+      }
+      api.responses <- c(api.responses, this.api.response)
+      this.page <- this.page + 1
     }
-}
-return(api.responses)
-if(.Platform$OS.type == "windows") { file.remove("cacert.perm") }
-}
-
-# parse json to data frame
-parse_json_to_df <- function(api.responses)
-{
-api.df = data.frame(
-    id=NULL,
-    sectionId=NULL,
-    sectionName=NULL,
-    webPublicationDate=NULL,
-    webTitle=NULL,
-    webUrl=NULL,
-    apiUrl=NULL,
-    newspaperPageNumber=NULL,
-    trailText=NULL,
-    headline=NULL,
-    showInRelatedContent=NULL,
-    lastModified=NULL,
-    hasStoryPackage=NULL,
-    score=NULL,
-    standfirst=NULL,
-    shortUrl=NULL,
-    wordcount=NULL,
-    commentable=NULL,
-    allowUgc=NULL,
-    isPremoderated=NULL,
-    byline=NULL,
-    publication=NULL,
-    newspaperEditionDate=NULL,
-    shouldHideAdverts=NULL,
-    liveBloggingNow=NULL,
-    commentCloseDate=NULL,
-    body=NULL)
-
-# determine number of pages
-pages <- which(names(api.responses)=="results")
-#pages <- pages.total
-
-for (i in pages)
-{
-    for (j in 1:length(api.responses[i]$results))
-    {
-        id <- api.responses[i]$results[[j]]$id
-        sectionId <- api.responses[i]$results[[j]]$sectionId
-        sectionName <- api.responses[i]$results[[j]]$sectionName
-        webPublicationDate <- api.responses[i]$results[[j]]$webPublicationDate
-        webTitle <- api.responses[i]$results[[j]]$webTitle
-        webUrl <- api.responses[i]$results[[j]]$webUrl
-        apiUrl <- api.responses[i]$results[[j]]$apiUrl
-        newspaperPageNumber <- api.responses[i]$results[[j]]$fields$newspaperPageNumber
-        trailText <- api.responses[i]$results[[j]]$fields$trailText
-        headline <- api.responses[i]$results[[j]]$fields$headline
-        showInRelatedContent <- api.responses[i]$results[[j]]$fields$showInRelatedContent
-        lastModified <- api.responses[i]$results[[j]]$fields$lastModified
-        hasStoryPackage <- api.responses[i]$results[[j]]$fields$hasStoryPackage
-        score <- api.responses[i]$results[[j]]$fields$score
-        standfirst <- api.responses[i]$results[[j]]$fields$standfirst
-        shortUrl <- api.responses[i]$results[[j]]$fields$shortUrl
-        wordcount <- api.responses[i]$results[[j]]$fields$wordcount
-        commentable <- api.responses[i]$results[[j]]$fields$commentable
-        allowUgc <- api.responses[i]$results[[j]]$fields$allowUgc
-        isPremoderated <- api.responses[i]$results[[j]]$fields$isPremoderated
-        byline <- api.responses[i]$results[[j]]$fields$byline
-        publication <- api.responses[i]$results[[j]]$fields$publication
-        newspaperEditionDate <- api.responses[i]$results[[j]]$fields$newspaperEditionDate
-        shouldHideAdverts <- api.responses[i]$results[[j]]$fields$shouldHideAdverts
-        liveBloggingNow <- api.responses[i]$results[[j]]$fields$liveBloggingNow
-        commentCloseDate <- api.responses[i]$results[[j]]$fields$commentCloseDate
-        body <- api.responses[i]$results[[j]]$fields$body
-        
-        if (is.null(id)) id <- NA
-        if (is.null(sectionId)) sectionId <- NA
-        if (is.null(sectionName)) sectionName <- NA
-        if (is.null(webPublicationDate)) webPublicationDate <- NA
-        if (is.null(webTitle)) webTitle <- NA
-        if (is.null(webUrl)) webUrl <- NA
-        if (is.null(apiUrl)) apiUrl <- NA
-        if (is.null(newspaperPageNumber)) newspaperPageNumber <- NA 
-        if (is.null(trailText)) trailText <- NA
-        if (is.null(headline)) headline <- NA
-        if (is.null(showInRelatedContent)) showInRelatedContent <- NA 
-        if (is.null(lastModified)) lastModified <- NA
-        if (is.null(hasStoryPackage)) hasStoryPackage <- NA
-        if (is.null(score)) score <- NA
-        if (is.null(standfirst)) standfirst <- NA
-        if (is.null(shortUrl)) shortUrl <- NA
-        if (is.null(wordcount)) wordcount <- NA
-        if (is.null(commentable)) commentable <- NA
-        if (is.null(allowUgc)) allowUgc <- NA
-        if (is.null(isPremoderated)) isPremoderated <- NA
-        if (is.null(byline)) byline <- NA
-        if (is.null(publication)) publication <- NA
-        if (is.null(newspaperEditionDate)) newspaperEditionDate <- NA
-        if (is.null(shouldHideAdverts)) shouldHideAdverts <- NA
-        if (is.null(liveBloggingNow)) liveBloggingNow <- NA
-        if (is.null(commentCloseDate)) commentCloseDate <- NA
-        if (is.null(body)) body <- NA
-        
-        this.api.df <- data.frame(
-            id=id,
-            sectionId=sectionId,
-            sectionName=sectionName,
-            webPublicationDate=webPublicationDate,
-            webTitle=webTitle,
-            webUrl=webUrl,
-            apiUrl=apiUrl,
-            newspaperPageNumber=newspaperPageNumber,
-            trailText=trailText,
-            headline=headline,
-            showInRelatedContent=showInRelatedContent,
-            lastModified=lastModified,
-            hasStoryPackage=hasStoryPackage,
-            score=score,
-            standfirst=standfirst,
-            shortUrl=shortUrl,
-            wordcount=wordcount,
-            commentable=commentable,
-            allowUgc=allowUgc,
-            isPremoderated=isPremoderated,
-            byline=byline,
-            publication=publication,
-            newspaperEditionDate=newspaperEditionDate,
-            shouldHideAdverts=shouldHideAdverts,
-            liveBloggingNow=liveBloggingNow,
-            commentCloseDate=commentCloseDate,
-            body=body)		
-        
-        api.df <- rbind(api.df, this.api.df)
-    }
-}
-return(unique(api.df))
+  }
+  return(api.responses)
+  if (.Platform$OS.type == "windows") {
+    file.remove("cacert.perm")
+  }
 }
 
-# call api wrapper
-get_guardian <- function(keywords, section=NULL, format="json", from.date, to.date, api.key)
-{
-guardian.api.responses <- get_json(keywords, section, format, from.date, to.date, api.key)
-guardian.api.df <- parse_json_to_df(guardian.api.responses)
-return (guardian.api.df)
+
+#' @noRd
+#' @importFrom tibble tibble
+#' @importFrom dplyr bind_rows
+parse_json_to_df <- function(api.responses) {
+
+    out <- lapply(api.responses$results, function(r) {
+        fields <- r[["fields"]]
+        r[["fields"]] <- NULL
+        df <- tibble::as_tibble(c(r, fields))
+    })
+
+    out <- dplyr::bind_rows(out)
+
+    out$body <- parse_html(out$body)
+
+    return(out)
+}
+
+
+#' @noRd
+#' @importFrom xml2 xml_text read_html
+parse_html <- function(str) {
+    str <- gsub("</p>", "\n</p>", str, fixed = TRUE)
+    return(xml2::xml_text(xml2::read_html(str)))
 }

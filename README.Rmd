@@ -1,0 +1,58 @@
+---
+output: github_document
+---
+
+<!-- README.md is generated from README.Rmd. Please edit that file -->
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.path = "man/figures/README-",
+  out.width = "100%"
+)
+```
+
+# GuardianR
+
+<!-- badges: start -->
+<!-- badges: end -->
+
+GuardianR provides an interface to the Open Platform's Content API of the Guardian Media Group. 
+It retrieves content from news outlets The Observer, The Guardian, and guardian.co.uk from 1999 to current day.
+See [CRAN](https://cran.r-project.org/web/packages/GuardianR/index.html) for the original package.
+
+## About this fork
+
+In this fork I changed a few things in the functions to make them compatible with my own work.
+
+
+## Installation
+
+You can install the released version of GuardianR from [CRAN](https://CRAN.R-project.org) with:
+
+``` r
+install.packages("GuardianR")
+```
+
+You can intall this fork from [GitHub](https://github.com/) with:
+
+``` r
+# install.packages("devtools")
+devtools::install_github("JBGruber/GuardianR")
+```
+## Example
+
+This is a basic example:
+
+```{r example}
+library("GuardianR")
+results <- get_guardian(
+  keywords = "Theresa May AND (Brexit OR EU)",
+  from = "2019-01-16",
+  to = "2019-01-30",
+  api_key = "212d23d3-c7b2-4273-8f1b-289a0803ca4b"
+)
+results
+```
+
