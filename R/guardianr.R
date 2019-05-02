@@ -61,19 +61,19 @@ get_guardian <- function(keywords,
     out$webPublicationDate <- as.POSIXct(
       gsub("T|Z", "", out$webPublicationDate),
       format = "%Y-%m-%d %H:%M:%S",
-      tz = "BST"
+      tz = "GMT"
     )
     
     out$newspaperEditionDate <- as.POSIXct(
       gsub("T|Z", "", out$newspaperEditionDate),
       format = "%Y-%m-%d %H:%M:%S",
-      tz = "BST"
+      tz = "GMT"
     )
     
     out$firstPublicationDate <- as.POSIXct(
       gsub("T|Z", "", out$firstPublicationDate),
       format = "%Y-%m-%d %H:%M:%S",
-      tz = "BST"
+      tz = "GMT"
     )
     
     return(out)
@@ -208,5 +208,5 @@ parse_to_df <- function(res) {
 #' @importFrom xml2 xml_text read_html
 parse_html <- function(str) {
     str <- gsub("</p>", "\n</p>", str, fixed = TRUE)
-    return(xml2::xml_text(xml2::read_html(str)))
+    return(xml2::xml_text(xml2::read_html(str), trim = TRUE))
 }
