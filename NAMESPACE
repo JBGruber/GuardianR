@@ -2,7 +2,6 @@
 
 export(get_guardian)
 importFrom(RCurl,getURL)
-importFrom(dplyr,bind_rows)
 importFrom(rjson,fromJSON)
 importFrom(tibble,tibble)
 importFrom(utils,download.file)

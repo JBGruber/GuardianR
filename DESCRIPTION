@@ -11,9 +11,8 @@ Depends: R (>= 3.2.0)
 Imports: 
   RCurl, 
   rjson, 
-  xml2,
   tibble,
-  dplyr
+  xml2
 Description: Provides an interface to the Open Platform's Content API of the Guardian Media Group. It retrieves content from news outlets The Observer, The Guardian, and guardian.co.uk from 1999 to current day.
 License: GPL (>= 2)
 Encoding: UTF-8

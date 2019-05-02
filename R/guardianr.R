@@ -18,7 +18,6 @@
 #'   multiple keywordsuse "Margaret+Hilda+Thatcher".
 #' @param section Specifies news sections to narrow the query or NULL to search
 #'   everywhere.
-#' @param format either "json" or "xml".
 #' @param from,to Start and end date of search (both are included in the
 #'   search).
 #' @param api_key A Guardian API-key is necessary to retrieve the full text of
@@ -40,16 +39,23 @@
 #' }
 get_guardian <- function(keywords,
                          section = NULL,
-                         format = "json",
                          from,
                          to,
                          api_key,
                          verbose = TRUE) {
+  
     keywords <- gsub("\\s+", "+", keywords)
     keywords <- gsub('"', "%22", keywords, fixed = TRUE)
-    guardian.api.responses <- get_json(keywords, section, format, from, to, api_key, verbose)
-    guardian.api.df <- parse_json_to_df(guardian.api.responses)
-    return(guardian.api.df)
+    
+    response <- get_json(keywords = keywords,
+                         section = section,
+                         from = from,
+                         to = to,
+                         api_key = api_key,
+                         verbose = verbose)
+    out <- lapply(response, parse_to_df)
+    out <- do.call(rbind, out)
+    return(out)
 }
 
 
@@ -59,97 +65,123 @@ get_guardian <- function(keywords,
 #' @importFrom rjson fromJSON
 get_json <- function(keywords,
                      section = NULL,
-                     format = "json",
                      from,
                      to,
                      api_key,
                      verbose) {
-  # pagination
-  page.size <- 100
-  this.page <- 1
-  pages <- 1
-
-  if (as.Date(as.character(to)) - as.Date(as.character(from)) > 31) {
-    warning("Periods longer than 30 days might lead to API interruptions.")
+  
+  request <- paste0(
+    "http://content.guardianapis.com/search?q=", keywords, 
+    if (!is.null(section)) "&section=", section, 
+    "&from-date=", from, 
+    "&to-date=", to,
+    "&format=json", 
+    "&show-fields=all&page=", 1,
+    "&page-size=", 1, 
+    "&api-key=", api_key
+  )
+  
+  response <- getURL(request, timeout = 240, .encoding = 'UTF-8')
+  
+  json <- rjson::fromJSON(response, simplify = FALSE)
+  
+  if (json$response$status == "error") {
+    stop(json$response$message)
   }
-
-  # prepare list for storing api responses
-  api.responses <- NULL
-
-  # call guardian API
-  while (this.page <= pages) {
-    if (is.null(section)) {
-      request <- paste("http://content.guardianapis.com/search?q=", keywords, "&from-date=", from, "&to-date=", to,
-        "&format=", format, "&show-fields=all&page=", this.page, "&page-size=", page.size, "&api-key=", api_key,
-        sep = ""
-      )
-    } else {
-      request <- paste("http://content.guardianapis.com/search?q=", keywords, "&section=", section, "&from-date=", from, "&to-date=", to,
-        "&format=", format, "&show-fields=all&page=", this.page,
-        "&page-size=", page.size, "&api-key=", api_key,
-        sep = ""
-      )
-    }
-    # query api
-    if (.Platform$OS.type == "windows") {
-      if (!file.exists("cacert.perm")) download.file(url = "https://curl.haxx.se/ca/cacert.pem", destfile = "cacert.perm")
-    }
-    if (.Platform$OS.type == "windows") {
-      json <- getURL(request, cainfo = "cacert.perm", timeout = 240, ssl.verifypeer = FALSE, .encoding = 'UTF-8')
-    } else {
-      json <- getURL(request, timeout = 240, .encoding = 'UTF-8')
-    }
-    #json <- fromJSON(json, simplify = FALSE, encoding = "UTF-8")
-    json <- rjson::fromJSON(json, simplify = FALSE)
-
-    this.api.response <- json$response
-    stopifnot(!is.null(this.api.response))
-    # if(this.page==1) { pages.total <<- this.api.response$pages }
-    if (this.api.response$total == 0) {
-        if (verbose) {
-            message("No matches were found in the Guardian database for keyword '", keywords, "'")
-        }
-        this.page <- this.page + 1
-    } else {
-      stopifnot(!is.null(this.api.response))
-      pages <- this.api.response$pages
-      if (pages >= 1) {
-        if (verbose) {
-            message("Fetched page #", this.page, " of ", pages)
-        }
-        api.responses <- c(api.responses, this.api.response)
-      } else {
-          if (verbose) {
-              print("Fetched page #1 of 1.")
-          }
-      }
-      api.responses <- c(api.responses, this.api.response)
-      this.page <- this.page + 1
-    }
+  
+  total_found <- json$response$total
+  pages <- ceiling(total_found / 100)
+  
+  if (verbose) {
+      message(pages, " pages of results found. Retrieving...")
   }
-  return(api.responses)
-  if (.Platform$OS.type == "windows") {
-    file.remove("cacert.perm")
-  }
+  
+  out <- lapply(seq(pages), function(page) {
+    request <- paste0(
+      "http://content.guardianapis.com/search?q=", keywords, 
+      if (!is.null(section)) "&section=", section, 
+      "&from-date=", from, 
+      "&to-date=", to,
+      "&format=json", 
+      "&show-fields=all&page=", page,
+      "&page-size=", 100, 
+      "&api-key=", api_key
+    )
+    
+    response <- getURL(request, timeout = 240, .encoding = 'UTF-8')
+    
+    json <- rjson::fromJSON(response, simplify = FALSE)
+    if (verbose) {
+      message("\t...page ", page)
+    }
+    
+    return(json$response)
+  })
+  
+  return(out)
 }
 
 
 #' @noRd
 #' @importFrom tibble tibble
-#' @importFrom dplyr bind_rows
-parse_json_to_df <- function(api.responses) {
-
-    out <- lapply(api.responses$results, function(r) {
-        fields <- r[["fields"]]
-        r[["fields"]] <- NULL
-        df <- tibble::as_tibble(c(r, fields))
-    })
-
-    out <- dplyr::bind_rows(out)
-
-    out$body <- parse_html(out$body)
-
-    return(out)
+parse_to_df <- function(res) {
+  select_vars <- c(
+    "id",
+    "type",
+    "sectionId",
+    "sectionName",
+    "webPublicationDate",
+    "webTitle",
+    "webUrl",
+    "apiUrl",
+    "isHosted",
+    "pillarId",
+    "pillarName",
+    "headline",
+    "standfirst",
+    "trailText",
+    "byline",
+    "main",
+    "body",
+    "newspaperPageNumber",
+    "wordcount",
+    "firstPublicationDate",
+    "isInappropriateForSponsorship",
+    "isPremoderated",
+    "lastModified",
+    "newspaperEditionDate",
+    "productionOffice",
+    "publication",
+    "shortUrl",
+    "shouldHideAdverts",
+    "showInRelatedContent",
+    "thumbnail",
+    "legallySensitive",
+    "sensitive",
+    "lang",
+    "bodyText",
+    "charCount",
+    "shouldHideReaderRevenue",
+    "starRating",
+    "commentCloseDate",
+    "commentable" 
+  )
+  
+  out <- lapply(res$results, function(r) {
+    fields <- r[["fields"]]
+    r[["fields"]] <- NULL
+    df <- tibble::as_tibble(c(r, fields))
+    df <- df[colnames(df) %in% select_vars]
+    df[select_vars[!select_vars %in% colnames(df)]] <- NA
+    df <- df[, select_vars] 
+    return(df)
+  })
+  
+  out <- do.call(rbind, out)
+  
+  out$body <- parse_html(out$body)
+  
+  return(out)
 }
 
 

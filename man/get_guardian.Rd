@@ -4,8 +4,8 @@
 \alias{get_guardian}
 \title{Search Guardian API for news articles that match the criteria}
 \usage{
-get_guardian(keywords, section = NULL, format = "json", from, to,
-  api_key, verbose = TRUE)
+get_guardian(keywords, section = NULL, from, to, api_key,
+  verbose = TRUE)
 }
 \arguments{
 \item{keywords}{Keyword to search Guardian API. Example: "Thatcher". For
@@ -13,8 +13,6 @@ multiple keywordsuse "Margaret+Hilda+Thatcher".}
 
 \item{section}{Specifies news sections to narrow the query or NULL to search
 everywhere.}
-
-\item{format}{either "json" or "xml".}
 
 \item{from, to}{Start and end date of search (both are included in the
 search).}
